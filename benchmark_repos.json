@@ -1,0 +1,54 @@
+{
+  "discovered_at": "2026-08-25T05:43:00Z",
+  "search_criteria": "nvidia nim benchmark swarm async",
+  "benchmarks": [
+    {
+      "rank": 1,
+      "full_name": "toxicwind/moonbox-nim-benchmark-2-20260822",
+      "url": "https://github.com/toxicwind/moonbox-nim-benchmark-2-20260822",
+      "private": true,
+      "language": "HTML",
+      "description": "Prior moonbox NIM benchmark run (2026-08-22)",
+      "size_kb": 14,
+      "stars": 0,
+      "topics": [],
+      "relevance": "existing_private_baseline"
+    },
+    {
+      "rank": 2,
+      "full_name": "QuanTuring-AI/NV-benchmark",
+      "url": "https://github.com/QuanTuring-AI/NV-benchmark",
+      "private": false,
+      "language": "Python",
+      "description": "NVIDIA NIM vs Ollama on RTX 5090 — 7.3x throughput, 13x TTFT, NeMo Guardrails at +2.1% overhead",
+      "size_kb": 116,
+      "stars": 0,
+      "topics": ["benchmark","blackwell","llm-inference","nemo-guardrails","nvidia-nim","ollama","rtx-5090","tensorrt-llm"],
+      "relevance": "public_throughput_ttfp_baseline"
+    },
+    {
+      "rank": 3,
+      "full_name": "sohanemon/nvidia-nim-benchmark",
+      "url": "https://github.com/sohanemon/nvidia-nim-benchmark",
+      "private": false,
+      "language": "Python",
+      "description": "Benchmark latency of NVIDIA NIM models (LLMs, inference speed test tool)",
+      "size_kb": 3,
+      "stars": 1,
+      "topics": ["benchmark","llm","nim","nvidia","python"],
+      "relevance": "public_latency_tool"
+    },
+    {
+      "rank": 4,
+      "full_name": "karthikrshet/NVIDIA-Agent-Doctor",
+      "url": "https://github.com/karthikrshet/NVIDIA-Agent-Doctor",
+      "private": false,
+      "language": "Python",
+      "description": "NVIDIA AI environment diagnostics, security, compatibility, and benchmarking CLI",
+      "size_kb": 2110,
+      "stars": 3,
+      "topics": ["agent-skills","agentic-ai","ai-agents","ai-security","cuda","deep-learning","gpu","llm","machine-learning","mcp","nemoclaw","nemotron","nim","nvidia","nvidia-cuda","nvidia-docker","nvidia-gpu","nvidia-nim","openshell","tensorrt"],
+      "relevance": "public_diagnostics_benchmarking_cli"
+    }
+  ]
+}
