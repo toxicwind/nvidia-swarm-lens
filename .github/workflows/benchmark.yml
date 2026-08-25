@@ -1,0 +1,27 @@
+name: NVIDIA NIM Benchmark Suite
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * 0"
+
+jobs:
+  nim-throughput:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        model: ["meta/llama-3.1-8b-instruct", "meta/llama-3.1-70b-instruct"]
+        concurrency: [1, 4, 8, 16]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install aiohttp
+      - run: |
+          python src/benchmarks/nim_throughput.py             --model ${{ matrix.model }}             --concurrency ${{ matrix.concurrency }}             --output data/benchmarks/${{ matrix.model }}_${{ matrix.concurrency }}.json
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nim-${{ matrix.model }}-${{ matrix.concurrency }}
+          path: data/benchmarks/*.json
