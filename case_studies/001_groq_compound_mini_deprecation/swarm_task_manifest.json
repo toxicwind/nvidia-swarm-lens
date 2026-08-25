@@ -1,0 +1,77 @@
+{
+  "case_study": "01",
+  "title": "Groq Compound Mini Deprecation OSINT",
+  "status": "in_progress",
+  "created_at": "2026-08-25T15:49:14.874759",
+  "swarm_config": {
+    "task": "Investigate Groq Compound Mini deprecation: what is it, why now, migration paths",
+    "lens_names": [
+      "researcher",
+      "analyst",
+      "coder"
+    ],
+    "context": {
+      "focus": "groq",
+      "model": "compound-mini",
+      "deadline": "2026-09-21",
+      "company": "Groq, Inc.",
+      "address": "2700 Zanker Road, Suite 150, San Jose, CA 95134",
+      "contact": "support@groq.com"
+    },
+    "max_concurrent": 16,
+    "timeout": 30,
+    "model": "meta/llama-3.1-405b-instruct"
+  },
+  "agents": {
+    "researcher": {
+      "goal": "Identify what Compound Mini is, its architecture, history, and public references",
+      "tools": [
+        "web_search",
+        "web_open_url",
+        "get_data_source"
+      ],
+      "queries": [
+        "Groq Compound Mini model architecture",
+        "site:groq.com Compound Mini",
+        "GroqCloud model catalog 2026",
+        "Groq LPU Compound Mini inference"
+      ]
+    },
+    "analyst": {
+      "goal": "Analyze why Groq is deprecating Compound Mini now, competitive landscape, financial implications",
+      "tools": [
+        "web_search",
+        "get_data_source"
+      ],
+      "queries": [
+        "Groq model deprecation strategy 2026",
+        "Groq vs NVIDIA NIM vs Together AI model lifecycle",
+        "Groq funding valuation 2026",
+        "AI inference market share 2026"
+      ]
+    },
+    "coder": {
+      "goal": "Build migration scripts and API compatibility layers from Groq to NVIDIA NIM",
+      "tools": [
+        "ipython",
+        "web_search"
+      ],
+      "queries": [
+        "Groq API to OpenAI compatibility layer",
+        "NVIDIA NIM migration from Groq",
+        "Llama 3.1 405B Groq vs NIM performance"
+      ]
+    }
+  },
+  "artifacts": {
+    "osint_report": "case-study-01-groq-deprecation/osint_report.md",
+    "migration_guide": "case-study-01-groq-deprecation/migration_guide.md",
+    "code_examples": "case-study-01-groq-deprecation/migration_examples/"
+  },
+  "references": {
+    "groq_models": "https://console.groq.com/docs/models",
+    "groq_docs": "https://console.groq.com/docs",
+    "nvidia_nim": "https://docs.api.nvidia.com/",
+    "together_ai": "https://api.together.xyz/"
+  }
+}
