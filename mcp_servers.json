@@ -16,9 +16,9 @@
       "free_tier": true,
       "tools": [
         "resolve-library-id",
-        "get-library-docs",
-        "search-library"
-      ]
+        "query-docs"
+      ],
+      "status": "LIVE"
     },
     {
       "name": "exa",
@@ -34,7 +34,8 @@
         "findSimilar",
         "getContents"
       ],
-      "note": "DEAD \u2014 402 Payment Required"
+      "status": "DEAD (402 Payment Required)",
+      "replacement": "duckduckgo or chrome_cdp"
     },
     {
       "name": "bash_root",
@@ -49,7 +50,8 @@
         "bash_stream",
         "bash_kill"
       ],
-      "yolo_mode": true
+      "yolo_mode": true,
+      "status": "LIVE"
     },
     {
       "name": "strace_live",
@@ -64,7 +66,8 @@
         "strace_stream",
         "ptrace_peek",
         "ptrace_poke"
-      ]
+      ],
+      "status": "PARTIAL (strace binary missing)"
     },
     {
       "name": "nvidia_nim",
@@ -82,7 +85,8 @@
       "models": [
         "meta/llama-3.1-405b-instruct",
         "meta/llama-3.1-70b-instruct"
-      ]
+      ],
+      "status": "LIVE (key valid)"
     },
     {
       "name": "mintlify_gdrive",
@@ -97,7 +101,8 @@
         "search-docs",
         "read-doc",
         "list-files"
-      ]
+      ],
+      "status": "DEAD (Cloudflare 1010)"
     },
     {
       "name": "duckduckgo",
@@ -111,6 +116,7 @@
         "ddg_text",
         "ddg_news"
       ],
+      "status": "INSTALLING",
       "note": "FREE Exa replacement \u2014 no API key"
     },
     {
@@ -124,8 +130,10 @@
       "tools": [
         "navigate",
         "evaluate",
-        "screenshot"
+        "screenshot",
+        "scrape_search"
       ],
+      "status": "PARTIAL",
       "note": "FREE Exa replacement \u2014 browser scraping"
     }
   ],
