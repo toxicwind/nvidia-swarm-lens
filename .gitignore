@@ -1,26 +1,10 @@
-# huh project — redwood
 .env
-.env.local
-.env.*.local
-*.log
-logs/
+*.key
+*.pem
 __pycache__/
 *.pyc
-node_modules/
-.DS_Store
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# Binary outputs
-bin/*.so
-bin/*.dll
-bin/*.dylib
-
-# Session data
-sessions/
-cookies/
-cache/
-
+.checkpoints/
+.stress_log.txt
+.count_state.json
+*.sock
+*.log
