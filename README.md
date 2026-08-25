@@ -1,41 +1,18 @@
-# 🔮 huh
+# NvidiaLensSwarm
 
-Moonbox swarm orchestration with Mintlify MCP integration.
+Maximal integration. Machine: redwood. Meta: extreme. YOLO mode.
 
-## Machine
-- **Name:** redwood
-- **Meta:** extreme
-- **Mode:** YOLO
+## MCP Server Status
 
-## Structure
-```
-huh/
-├── .env              # API keys (gitignored)
-├── .gitignore
-├── README.md
-├── skills/           # Browser automation & MCP skills
-├── configs/          # Project manifests & MCP configs
-├── bin/              # Portable binary loaders
-├── references/       # Research docs
-└── logs/             # Runtime logs
-```
+| Server | Status | Note |
+|--------|--------|------|
+| Context7 | LIVE | SSE over HTTP |
+| Exa | DEAD | 402 Payment Required |
+| DuckDuckGo | LIVE | Free replacement for Exa |
+| Chrome CDP | LIVE | Browser scraping replacement |
+| NVIDIA NIM | LIVE | Key valid |
+| Mintlify | DEAD | Cloudflare 1010 |
+| Bash | LIVE | Local execution |
+| Strace | PARTIAL | Binary missing |
 
-## Quick Start
-```bash
-bash setup.sh
-python loader.py load
-python loader.py test
-```
-
-## MCP Servers
-| Server | Status | URL |
-|--------|--------|-----|
-| Mintlify | ✅ | https://mcp.mintlify.com |
-| Context7 | ⚠️ | https://mcp.context7.com/mcp |
-| Exa | ❌ | X402_PAYMENT_REQUIRED |
-
-## Skills
-- `fast-browser-use` — Research-grade Cloudflare bypass (nodriver, Patchright, Camoufox, curl_cffi)
-
-## License
-AGPL-3.0
+Auto-deployed via GitHub API.
