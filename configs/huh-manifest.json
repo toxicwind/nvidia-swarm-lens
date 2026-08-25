@@ -1,0 +1,40 @@
+{
+  "project": "huh",
+  "version": "0.1.0",
+  "description": "Moonbox swarm orchestration with Mintlify MCP integration",
+  "mcp_servers": [
+    "Mintlify",
+    "Context7",
+    "Exa"
+  ],
+  "extensions": {
+    "swarm": {
+      "enabled": true,
+      "lens_profiles": [
+        "architectural",
+        "cognitive",
+        "bleeding"
+      ],
+      "transport": "triton-grpc"
+    },
+    "skill_plugin": {
+      "enabled": true,
+      "protocol": "skill://",
+      "registry": "/app/.agents/skills/"
+    }
+  },
+  "integrations": {
+    "mintlify": {
+      "mcp_url": "https://mcp.mintlify.com",
+      "features": [
+        "docs",
+        "search",
+        "api-reference"
+      ]
+    },
+    "google_drive": {
+      "swarm_extension": true,
+      "skill_plugin": true
+    }
+  }
+}

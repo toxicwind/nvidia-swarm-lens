@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "Mintlify": {
+      "url": "https://mcp.mintlify.com"
+    },
+    "Context7": {
+      "url": "https://mcp.context7.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ctx7sk-a95eb8a5-0eb2-4bb4-adff-b4393ed00119",
+        "Accept": "application/json, text/event-stream"
+      }
+    },
+    "Exa": {
+      "url": "https://api.exa.ai",
+      "headers": {
+        "Authorization": "Bearer 3acfc1d8-dd01-41c6-88be-a494e5ad363e"
+      }
+    }
+  }
+}
