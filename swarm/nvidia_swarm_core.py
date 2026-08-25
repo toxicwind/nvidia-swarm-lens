@@ -1,26 +1,14 @@
-"""
-nvidia_swarm_core.py
-Async DAG execution engine for NVIDIA NIM Swarm.
-Replaces the serial OpenAI Swarm run() with a parallelized
-Directed Acyclic Graph execution engine tailored for
-Llama 3.1 405B inference speeds.
-"""
+"""nvidia_swarm_core.py — Async DAG execution engine for NVIDIA NIM Swarm."""
 from __future__ import annotations
-import asyncio
-import json
-import time
-import uuid
+import asyncio, json, time, uuid, logging
 from dataclasses import dataclass, field
-from typing import Any, Callable, Coroutine, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, Coroutine
 from concurrent.futures import ThreadPoolExecutor
-import logging
 
 logger = logging.getLogger("nvidia_swarm.core")
 
-
 @dataclass
 class AgentNode:
-    """A node in the Swarm DAG representing a single agent invocation."""
     agent_id: str
     name: str
     system_prompt: str
@@ -33,30 +21,20 @@ class AgentNode:
     _result: Optional[Dict[str, Any]] = field(default=None, repr=False)
     _status: str = field(default="pending", repr=False)
     _latency_ms: float = field(default=0.0, repr=False)
-    _ttft_ms: float = field(default=0.0, repr=False)  # Time To First Token
-    _tps: float = field(default=0.0, repr=False)  # Tokens Per Second
+    _ttft_ms: float = field(default=0.0, repr=False)
+    _tps: float = field(default=0.0, repr=False)
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
-            "agent_id": self.agent_id,
-            "name": self.name,
-            "model": self.model,
-            "dependencies": list(self.dependencies),
-            "handoff_targets": self.handoff_targets,
-            "status": self._status,
-            "latency_ms": self._latency_ms,
-            "ttft_ms": self._ttft_ms,
-            "tps": self._tps,
-        }
-
+        return {"agent_id": self.agent_id, "name": self.name, "model": self.model,
+                "dependencies": list(self.dependencies), "handoff_targets": self.handoff_targets,
+                "status": self._status, "latency_ms": self._latency_ms,
+                "ttft_ms": self._ttft_ms, "tps": self._tps}
 
 class SwarmDAG:
-    """Directed Acyclic Graph for parallel agent execution."""
-
     def __init__(self, name: str = "swarm_dag"):
         self.name = name
         self.nodes: Dict[str, AgentNode] = {}
-        self.edges: Dict[str, Set[str]] = {}  # agent_id -> set of downstream agent_ids
+        self.edges: Dict[str, Set[str]] = {}
         self._lock = asyncio.Lock()
 
     def add_node(self, node: AgentNode) -> "SwarmDAG":
@@ -70,7 +48,6 @@ class SwarmDAG:
         return self
 
     def topological_sort(self) -> List[List[str]]:
-        """Return layers of agent_ids that can execute in parallel."""
         in_degree = {aid: len(n.dependencies) for aid, n in self.nodes.items()}
         layers: List[List[str]] = []
         remaining = set(self.nodes.keys())
@@ -85,33 +62,8 @@ class SwarmDAG:
                     in_degree[downstream] -= 1
         return layers
 
-    def get_ready_nodes(self, completed: Set[str]) -> List[AgentNode]:
-        ready = []
-        for aid, node in self.nodes.items():
-            if node._status != "pending":
-                continue
-            if node.dependencies.issubset(completed):
-                ready.append(node)
-        return ready
-
-
 class NvidiaSwarm:
-    """
-    High-concurrency NVIDIA NIM Swarm orchestrator.
-    Saturates NVIDIA token-per-second capabilities via:
-    - asyncio non-blocking I/O
-    - Parallel DAG layer execution
-    - Persistent connection pooling
-    - Active batching where supported
-    """
-
-    def __init__(
-        self,
-        transport: Any,
-        max_concurrent: int = 50,
-        batch_size: int = 8,
-        enable_batching: bool = True,
-    ):
+    def __init__(self, transport: Any, max_concurrent: int = 50, batch_size: int = 8, enable_batching: bool = True):
         self.transport = transport
         self.max_concurrent = max_concurrent
         self.batch_size = batch_size
@@ -120,37 +72,17 @@ class NvidiaSwarm:
         self._executor = ThreadPoolExecutor(max_workers=max_concurrent)
         self._metrics: List[Dict[str, Any]] = []
 
-    async def run_dag(
-        self,
-        dag: SwarmDAG,
-        initial_messages: List[Dict[str, str]],
-        context: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        """Execute a SwarmDAG with maximal parallelism."""
+    async def run_dag(self, dag: SwarmDAG, initial_messages: List[Dict[str, str]], context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         context = context or {}
         completed: Set[str] = set()
         all_results: Dict[str, Any] = {}
         start_time = time.perf_counter()
-
         layers = dag.topological_sort()
-        logger.info(f"DAG '{dag.name}' has {len(dag.nodes)} nodes across {len(layers)} layers")
-
+        logger.info(f"DAG '{dag.name}': {len(dag.nodes)} nodes, {len(layers)} layers")
         for layer_idx, layer in enumerate(layers):
             layer_start = time.perf_counter()
-            tasks = []
-            for aid in layer:
-                node = dag.nodes[aid]
-                # Merge context + upstream results into messages
-                msgs = self._build_messages(node, initial_messages, all_results, context)
-                tasks.append(self._execute_node(node, msgs, context))
-
-            if self.enable_batching and len(tasks) > 1:
-                # Batch parallel agents of the same model for KV-cache efficiency
-                batched = self._batch_tasks(tasks)
-                results = await asyncio.gather(*batched, return_exceptions=True)
-            else:
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-
+            tasks = [self._execute_node(dag.nodes[aid], self._build_messages(dag.nodes[aid], initial_messages, all_results, context), context) for aid in layer]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
             for aid, res in zip(layer, results):
                 if isinstance(res, Exception):
                     dag.nodes[aid]._status = "error"
@@ -161,82 +93,33 @@ class NvidiaSwarm:
                     dag.nodes[aid]._result = res
                     all_results[aid] = res
                     completed.add(aid)
+            logger.info(f"Layer {layer_idx} done in {(time.perf_counter()-layer_start)*1000:.1f}ms")
+        return {"dag_name": dag.name, "total_latency_ms": (time.perf_counter()-start_time)*1000,
+                "layers_executed": len(layers), "nodes_completed": len(completed),
+                "results": all_results, "node_metrics": {aid: n.to_dict() for aid, n in dag.nodes.items()}}
 
-            layer_elapsed = (time.perf_counter() - layer_start) * 1000
-            logger.info(f"Layer {layer_idx} completed in {layer_elapsed:.1f}ms")
-
-        total_elapsed = (time.perf_counter() - start_time) * 1000
-        return {
-            "dag_name": dag.name,
-            "total_latency_ms": total_elapsed,
-            "layers_executed": len(layers),
-            "nodes_completed": len(completed),
-            "results": all_results,
-            "node_metrics": {aid: n.to_dict() for aid, n in dag.nodes.items()},
-        }
-
-    async def _execute_node(
-        self,
-        node: AgentNode,
-        messages: List[Dict[str, str]],
-        context: Dict[str, Any],
-    ) -> Dict[str, Any]:
+    async def _execute_node(self, node: AgentNode, messages: List[Dict[str, str]], context: Dict[str, Any]) -> Dict[str, Any]:
         async with self._semaphore:
             t0 = time.perf_counter()
-            try:
-                response = await self.transport.chat_completion(
-                    model=node.model,
-                    messages=messages,
-                    tools=node.tools if node.tools else None,
-                    temperature=node.temperature,
-                    max_tokens=node.max_tokens,
-                )
-                t1 = time.perf_counter()
-                latency = (t1 - t0) * 1000
-                node._latency_ms = latency
-                # Extract TTFT and TPS from response headers if available
-                node._ttft_ms = response.get("_ttft_ms", 0.0)
-                node._tps = response.get("_tps", 0.0)
-                self._metrics.append({
-                    "agent_id": node.agent_id,
-                    "latency_ms": latency,
-                    "ttft_ms": node._ttft_ms,
-                    "tps": node._tps,
-                })
-                return {
-                    "agent_id": node.agent_id,
-                    "content": response.get("content", ""),
-                    "tool_calls": response.get("tool_calls", []),
-                    "model": node.model,
-                    "latency_ms": latency,
-                }
-            except Exception as e:
-                logger.exception(f"Node {node.agent_id} execution failed")
-                raise
+            response = await self.transport.chat_completion(model=node.model, messages=messages, tools=node.tools or None,
+                temperature=node.temperature, max_tokens=node.max_tokens)
+            latency = (time.perf_counter() - t0) * 1000
+            node._latency_ms = latency
+            node._ttft_ms = response.get("_ttft_ms", 0.0)
+            node._tps = response.get("_tps", 0.0)
+            self._metrics.append({"agent_id": node.agent_id, "latency_ms": latency, "ttft_ms": node._ttft_ms, "tps": node._tps})
+            return {"agent_id": node.agent_id, "content": response.get("content", ""), "tool_calls": response.get("tool_calls", []),
+                    "model": node.model, "latency_ms": latency}
 
-    def _build_messages(
-        self,
-        node: AgentNode,
-        initial_messages: List[Dict[str, str]],
-        upstream_results: Dict[str, Any],
-        context: Dict[str, Any],
-    ) -> List[Dict[str, str]]:
+    def _build_messages(self, node: AgentNode, initial: List[Dict[str, str]], upstream: Dict[str, Any], context: Dict[str, Any]) -> List[Dict[str, str]]:
         msgs = [{"role": "system", "content": node.system_prompt}]
-        msgs.extend(initial_messages)
-        # Inject upstream results as context
+        msgs.extend(initial)
         for dep in node.dependencies:
-            if dep in upstream_results:
-                res = upstream_results[dep]
-                if "content" in res:
-                    msgs.append({"role": "user", "content": f"[Output from {dep}]: {res['content']}"})
+            if dep in upstream and "content" in upstream[dep]:
+                msgs.append({"role": "user", "content": f"[Output from {dep}]: {upstream[dep]['content']}"})
         if context:
             msgs.append({"role": "user", "content": f"[Context]: {json.dumps(context, default=str)}"})
         return msgs
-
-    def _batch_tasks(self, tasks: List[Coroutine]) -> List[Coroutine]:
-        """Group tasks for active batching where the transport supports it."""
-        # For now, return as-is; transport handles batching internally
-        return tasks
 
     def get_metrics(self) -> List[Dict[str, Any]]:
         return self._metrics.copy()
@@ -247,11 +130,6 @@ class NvidiaSwarm:
         latencies = [m["latency_ms"] for m in self._metrics]
         ttfts = [m["ttft_ms"] for m in self._metrics if m["ttft_ms"] > 0]
         tps_vals = [m["tps"] for m in self._metrics if m["tps"] > 0]
-        return {
-            "avg_latency_ms": sum(latencies) / len(latencies),
-            "max_latency_ms": max(latencies),
-            "min_latency_ms": min(latencies),
-            "avg_ttft_ms": sum(ttfts) / len(ttfts) if ttfts else 0.0,
-            "avg_tps": sum(tps_vals) / len(tps_vals) if tps_vals else 0.0,
-            "total_invocations": len(self._metrics),
-        }
+        return {"avg_latency_ms": sum(latencies)/len(latencies), "max_latency_ms": max(latencies), "min_latency_ms": min(latencies),
+                "avg_ttft_ms": sum(ttfts)/len(ttfts) if ttfts else 0.0, "avg_tps": sum(tps_vals)/len(tps_vals) if tps_vals else 0.0,
+                "total_invocations": len(self._metrics)}
