@@ -1,27 +1,18 @@
-"""
-nvidia_swarm_transport.py
-Triton Inference Server gRPC transport + HTTP REST fallback.
-Bypasses standard HTTP overhead with persistent connections and active batching.
-"""
+"""nvidia_swarm_transport.py — Triton gRPC + HTTP persistent pool."""
 from __future__ import annotations
-import asyncio
-import json
-import time
-import os
-from typing import Any, Dict, List, Optional, Tuple
+import asyncio, json, time, os
+from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
 import logging
 
 logger = logging.getLogger("nvidia_swarm.transport")
 
-# Try to import gRPC; fallback to HTTP if unavailable
 try:
     import grpc
     from grpc import aio as grpc_aio
     GRPC_AVAILABLE = True
 except ImportError:
     GRPC_AVAILABLE = False
-    logger.warning("grpc not installed; falling back to HTTP-only transport")
 
 try:
     import aiohttp
@@ -29,46 +20,22 @@ try:
 except ImportError:
     AIOHTTP_AVAILABLE = False
 
-
 @dataclass
 class PersistentConnectionPool:
-    """
-    Manages persistent HTTP/2 connections to NVIDIA NIM endpoints.
-    Reuses TCP connections and TLS handshakes across multiple requests.
-    """
     base_url: str = "https://integrate.api.nvidia.com"
     api_key: str = field(default_factory=lambda: os.getenv("NVIDIA_API_KEY", ""))
     max_connections: int = 50
-    max_keepalive: int = 30
     _session: Optional[Any] = field(default=None, repr=False)
-    _connector: Optional[Any] = field(default=None, repr=False)
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     async def get_session(self) -> Any:
         async with self._lock:
             if self._session is None or self._session.closed:
-                if not AIOHTTP_AVAILABLE:
-                    raise RuntimeError("aiohttp required for HTTP transport")
                 import aiohttp
-                self._connector = aiohttp.TCPConnector(
-                    limit=self.max_connections,
-                    limit_per_host=self.max_connections,
-                    enable_cleanup_closed=True,
-                    force_close=False,
-                    ttl_dns_cache=300,
-                    use_dns_cache=True,
-                )
-                timeout = aiohttp.ClientTimeout(total=120, connect=30)
-                self._session = aiohttp.ClientSession(
-                    connector=self._connector,
-                    timeout=timeout,
-                    headers={
-                        "Authorization": f"Bearer {self.api_key}",
-                        "Content-Type": "application/json",
-                        "Accept": "application/json",
-                        "Accept-Encoding": "gzip, deflate",
-                    },
-                )
+                self._connector = aiohttp.TCPConnector(limit=self.max_connections, limit_per_host=self.max_connections,
+                    enable_cleanup_closed=True, force_close=False, ttl_dns_cache=300, use_dns_cache=True)
+                self._session = aiohttp.ClientSession(connector=self._connector, timeout=aiohttp.ClientTimeout(total=120, connect=30),
+                    headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json", "Accept": "application/json", "Accept-Encoding": "gzip, deflate"})
             return self._session
 
     async def close(self):
@@ -76,11 +43,8 @@ class PersistentConnectionPool:
             if self._session and not self._session.closed:
                 await self._session.close()
                 self._session = None
-            if self._connector:
-                await self._connector.close()
-                self._connector = None
 
-    async def post(self, endpoint: str, payload: Dict[str, Any]) -> Tuple[int, Dict[str, Any], Dict[str, str]]:
+    async def post(self, endpoint: str, payload: Dict[str, Any]) -> tuple:
         session = await self.get_session()
         url = f"{self.base_url}{endpoint}"
         t0 = time.perf_counter()
@@ -92,20 +56,14 @@ class PersistentConnectionPool:
                 data = json.loads(body) if body else {}
             except json.JSONDecodeError:
                 data = {"raw": body}
-            # Extract NVIDIA-specific metrics from headers
             data["_ttft_ms"] = float(headers.get("x-ttft-ms", 0.0))
             data["_tps"] = float(headers.get("x-tokens-per-sec", 0.0))
             data["_latency_ms"] = latency
             return resp.status, data, headers
 
-
 @dataclass
 class TritonTransport:
-    """
-    gRPC transport for NVIDIA Triton Inference Server.
-    Bypasses HTTP REST overhead for persistent connections and active batching.
-    """
-    triton_url: str = "localhost:8001"  # Default Triton gRPC port
+    triton_url: str = "localhost:8001"
     model_name: str = "llama-3.1-405b"
     model_version: str = "1"
     _stub: Optional[Any] = field(default=None, repr=False)
@@ -113,85 +71,36 @@ class TritonTransport:
 
     async def connect(self):
         if not GRPC_AVAILABLE:
-            raise RuntimeError("grpcio required for Triton gRPC transport")
+            raise RuntimeError("grpcio required")
         import grpc
         from tritonclient.grpc import service_pb2, service_pb2_grpc
         self._channel = grpc_aio.insecure_channel(self.triton_url)
         self._stub = service_pb2_grpc.GRPCInferenceServiceStub(self._channel)
-        # Warmup
         await self._stub.ServerReady(service_pb2.ServerReadyRequest())
         logger.info(f"Triton gRPC connected to {self.triton_url}")
 
-    async def infer(
-        self,
-        prompt: str,
-        max_tokens: int = 4096,
-        temperature: float = 0.3,
-        top_p: float = 0.9,
-    ) -> Dict[str, Any]:
+    async def infer(self, prompt: str, max_tokens: int = 4096, temperature: float = 0.3, top_p: float = 0.9) -> Dict[str, Any]:
         if not self._stub:
             await self.connect()
         from tritonclient.grpc import service_pb2
-
-        # Build inference request
-        inputs = []
-        inputs.append(service_pb2.ModelInferRequest().InferInputTensor(
-            name="prompt", datatype="BYTES", shape=[1, 1],
-            contents=service_pb2.InferTensorContents(
-                byte_contents=[prompt.encode()]
-            )
-        ))
-        inputs.append(service_pb2.ModelInferRequest().InferInputTensor(
-            name="max_tokens", datatype="INT32", shape=[1, 1],
-            contents=service_pb2.InferTensorContents(
-                int_contents=[max_tokens]
-            )
-        ))
-        inputs.append(service_pb2.ModelInferRequest().InferInputTensor(
-            name="temperature", datatype="FP32", shape=[1, 1],
-            contents=service_pb2.InferTensorContents(
-                fp32_contents=[temperature]
-            )
-        ))
-
-        request = service_pb2.ModelInferRequest(
-            model_name=self.model_name,
-            model_version=self.model_version,
-            inputs=inputs,
-        )
-
+        inputs = [
+            service_pb2.ModelInferRequest().InferInputTensor(name="prompt", datatype="BYTES", shape=[1,1], contents=service_pb2.InferTensorContents(byte_contents=[prompt.encode()])),
+            service_pb2.ModelInferRequest().InferInputTensor(name="max_tokens", datatype="INT32", shape=[1,1], contents=service_pb2.InferTensorContents(int_contents=[max_tokens])),
+            service_pb2.ModelInferRequest().InferInputTensor(name="temperature", datatype="FP32", shape=[1,1], contents=service_pb2.InferTensorContents(fp32_contents=[temperature])),
+        ]
+        request = service_pb2.ModelInferRequest(model_name=self.model_name, model_version=self.model_version, inputs=inputs)
         t0 = time.perf_counter()
         response = await self._stub.ModelInfer(request)
         latency = (time.perf_counter() - t0) * 1000
-
-        # Extract output
-        output_tensor = response.outputs[0]
-        raw_output = output_tensor.contents.byte_contents[0].decode()
-
-        return {
-            "content": raw_output,
-            "tool_calls": [],
-            "_ttft_ms": 0.0,  # Triton doesn't expose TTFT directly
-            "_tps": 0.0,
-            "_latency_ms": latency,
-            "transport": "triton_grpc",
-        }
+        raw_output = response.outputs[0].contents.byte_contents[0].decode()
+        return {"content": raw_output, "tool_calls": [], "_ttft_ms": 0.0, "_tps": 0.0, "_latency_ms": latency, "transport": "triton_grpc"}
 
     async def close(self):
         if self._channel:
             await self._channel.close()
-            self._channel = None
-            self._stub = None
-
 
 @dataclass
 class NvidiaNIMClient:
-    """
-    Unified NVIDIA NIM client that auto-selects transport:
-    - Triton gRPC if available and configured
-    - HTTP/REST with persistent connection pool otherwise
-    - Supports streaming for real-time token delivery
-    """
     api_key: str = field(default_factory=lambda: os.getenv("NVIDIA_API_KEY", ""))
     base_url: str = "https://integrate.api.nvidia.com"
     model: str = "meta/llama-3.1-405b-instruct"
@@ -203,122 +112,50 @@ class NvidiaNIMClient:
     _metrics: List[Dict[str, Any]] = field(default_factory=list)
 
     def __post_init__(self):
-        self._http_pool = PersistentConnectionPool(
-            base_url=self.base_url,
-            api_key=self.api_key,
-        )
+        self._http_pool = PersistentConnectionPool(base_url=self.base_url, api_key=self.api_key)
         if self.enable_triton and GRPC_AVAILABLE:
-            self._triton = TritonTransport(
-                triton_url=self.triton_url,
-                model_name=self.model,
-            )
+            self._triton = TritonTransport(triton_url=self.triton_url, model_name=self.model)
 
-    async def chat_completion(
-        self,
-        model: Optional[str] = None,
-        messages: Optional[List[Dict[str, str]]] = None,
-        tools: Optional[List[Dict[str, Any]]] = None,
-        temperature: float = 0.3,
-        max_tokens: int = 4096,
-        stream: Optional[bool] = None,
-        extra_body: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        """
-        Send a chat completion request to NVIDIA NIM.
-        Returns structured response with metrics.
-        """
+    async def chat_completion(self, model: Optional[str] = None, messages: Optional[List[Dict[str, str]]] = None,
+                              tools: Optional[List[Dict[str, Any]]] = None, temperature: float = 0.3, max_tokens: int = 4096,
+                              stream: Optional[bool] = None, extra_body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         stream = stream if stream is not None else self.enable_streaming
         model = model or self.model
         messages = messages or []
-
-        # Prefer Triton gRPC if enabled
         if self._triton and self.enable_triton:
             prompt = self._messages_to_prompt(messages)
-            return await self._triton.infer(
-                prompt=prompt,
-                max_tokens=max_tokens,
-                temperature=temperature,
-            )
-
-        # HTTP REST fallback
-        payload = {
-            "model": model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "stream": stream,
-        }
+            return await self._triton.infer(prompt=prompt, max_tokens=max_tokens, temperature=temperature)
+        payload = {"model": model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens, "stream": stream}
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = "auto"
         if extra_body:
             payload.update(extra_body)
-
         status, data, headers = await self._http_pool.post("/v1/chat/completions", payload)
-
         if status != 200:
             raise RuntimeError(f"NIM error {status}: {data}")
-
-        # Handle streaming response
-        if stream and "choices" not in data:
-            # Streaming responses come as SSE; we already have the full response
-            pass
-
-        # Normalize response
         choice = data.get("choices", [{}])[0]
         message = choice.get("message", {})
-
-        result = {
-            "content": message.get("content", ""),
-            "tool_calls": message.get("tool_calls", []),
-            "finish_reason": choice.get("finish_reason", ""),
-            "model": data.get("model", model),
-            "usage": data.get("usage", {}),
-            "_ttft_ms": data.get("_ttft_ms", 0.0),
-            "_tps": data.get("_tps", 0.0),
-            "_latency_ms": data.get("_latency_ms", 0.0),
-            "transport": "http_rest",
-        }
-        self._metrics.append({
-            "model": model,
-            "latency_ms": result["_latency_ms"],
-            "ttft_ms": result["_ttft_ms"],
-            "tps": result["_tps"],
-            "tokens_in": result["usage"].get("prompt_tokens", 0),
-            "tokens_out": result["usage"].get("completion_tokens", 0),
-        })
+        result = {"content": message.get("content", ""), "tool_calls": message.get("tool_calls", []),
+                  "finish_reason": choice.get("finish_reason", ""), "model": data.get("model", model),
+                  "usage": data.get("usage", {}), "_ttft_ms": data.get("_ttft_ms", 0.0), "_tps": data.get("_tps", 0.0),
+                  "_latency_ms": data.get("_latency_ms", 0.0), "transport": "http_rest"}
+        self._metrics.append({"model": model, "latency_ms": result["_latency_ms"], "ttft_ms": result["_ttft_ms"], "tps": result["_tps"],
+                              "tokens_in": result["usage"].get("prompt_tokens", 0), "tokens_out": result["usage"].get("completion_tokens", 0)})
         return result
 
-    async def stream_completion(
-        self,
-        model: Optional[str] = None,
-        messages: Optional[List[Dict[str, str]]] = None,
-        temperature: float = 0.3,
-        max_tokens: int = 4096,
-    ):
-        """
-        Stream tokens from NVIDIA NIM in real-time.
-        Yields partial content chunks as they arrive.
-        """
+    async def stream_completion(self, model: Optional[str] = None, messages: Optional[List[Dict[str, str]]] = None,
+                                temperature: float = 0.3, max_tokens: int = 4096):
         model = model or self.model
         messages = messages or []
-        payload = {
-            "model": model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "stream": True,
-        }
-
+        payload = {"model": model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens, "stream": True}
         session = await self._http_pool.get_session()
         url = f"{self.base_url}/v1/chat/completions"
         t0 = time.perf_counter()
-
         async with session.post(url, json=payload) as resp:
             if resp.status != 200:
                 body = await resp.text()
                 raise RuntimeError(f"Stream error {resp.status}: {body}")
-
             buffer = ""
             async for line in resp.content:
                 line = line.decode("utf-8").strip()
@@ -332,27 +169,16 @@ class NvidiaNIMClient:
                         content = delta.get("content", "")
                         if content:
                             buffer += content
-                            yield {
-                                "type": "token",
-                                "content": content,
-                                "accumulated": buffer,
-                            }
+                            yield {"type": "token", "content": content, "accumulated": buffer}
                     except json.JSONDecodeError:
                         continue
-
             latency = (time.perf_counter() - t0) * 1000
-            yield {
-                "type": "done",
-                "accumulated": buffer,
-                "latency_ms": latency,
-            }
+            yield {"type": "done", "accumulated": buffer, "latency_ms": latency}
 
     def _messages_to_prompt(self, messages: List[Dict[str, str]]) -> str:
-        """Convert message list to a single prompt string for Triton."""
         parts = []
         for msg in messages:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
+            role, content = msg.get("role", "user"), msg.get("content", "")
             if role == "system":
                 parts.append(f"System: {content}")
             elif role == "user":
@@ -373,11 +199,8 @@ class NvidiaNIMClient:
     def get_aggregate_metrics(self) -> Dict[str, float]:
         if not self._metrics:
             return {}
-        return {
-            "avg_latency_ms": sum(m["latency_ms"] for m in self._metrics) / len(self._metrics),
-            "avg_ttft_ms": sum(m["ttft_ms"] for m in self._metrics) / len(self._metrics),
-            "avg_tps": sum(m["tps"] for m in self._metrics) / len(self._metrics),
-            "total_requests": len(self._metrics),
-            "total_tokens_in": sum(m["tokens_in"] for m in self._metrics),
-            "total_tokens_out": sum(m["tokens_out"] for m in self._metrics),
-        }
+        return {"avg_latency_ms": sum(m["latency_ms"] for m in self._metrics)/len(self._metrics),
+                "avg_ttft_ms": sum(m["ttft_ms"] for m in self._metrics)/len(self._metrics),
+                "avg_tps": sum(m["tps"] for m in self._metrics)/len(self._metrics),
+                "total_requests": len(self._metrics), "total_tokens_in": sum(m["tokens_in"] for m in self._metrics),
+                "total_tokens_out": sum(m["tokens_out"] for m in self._metrics)}
