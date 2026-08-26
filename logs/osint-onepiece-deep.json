@@ -1,0 +1,26 @@
+{
+  "source_url": "https://drsquatch.com/collections/one-piece",
+  "fetch_time": "2026-08-26T05:21:52Z",
+  "html_size_bytes": 401487,
+  "product_urls_found": [
+    "/products/blue-ribbon-breeze-3-pack",
+    "/products/squatch-gift-card"
+  ],
+  "product_names_found": [],
+  "doc_mentions": [],
+  "image_urls": [],
+  "prices_found": [
+    "15.00",
+    "30.00",
+    "45.00",
+    "60.00",
+    "75.00",
+    "90.00",
+    "20.00",
+    "150.00",
+    "0.01",
+    "9.99"
+  ],
+  "has_onepiece": true,
+  "has_docs_notes": false
+}
