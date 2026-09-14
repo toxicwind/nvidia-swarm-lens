@@ -16,9 +16,17 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install aiohttp requests python-dotenv
-      - run: python -m py_compile src/nvidia_swarm/*.py
-      - run: python -m py_compile src/iptv_discovery/*.py
-      - run: python -m py_compile src/benchmarks/*.py
+      - name: Compile all first-party Python
+        run: |
+          python - <<'PYEOF_INNER'
+          import compileall, re, sys
+          ok = compileall.compile_dir(
+              '.',
+              rx=re.compile(r'[/\\](bin/pylibs|node_modules|\.git|__pycache__)([/\\]|$)'),
+              quiet=1,
+          )
+          sys.exit(0 if ok else 1)
+          PYEOF_INNER
 
   benchmark:
     runs-on: ubuntu-latest
