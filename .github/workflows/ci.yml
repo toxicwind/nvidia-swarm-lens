@@ -16,9 +16,9 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install aiohttp requests python-dotenv
-      - run: python -m py_compile src/nvidia_swarm/*.py
-      - run: python -m py_compile src/iptv_discovery/*.py
-      - run: python -m py_compile src/benchmarks/*.py
+      - run: python -m py_compile swarm/*.py lens/*.py nim/*.py launcher.py loader.py swarm_maximal.py osint_runner.py
+      # NOTE: src/iptv_discovery, src/benchmarks do not exist in this repo;
+      # benchmark job kept as a placeholder until a real runner lands.
 
   benchmark:
     runs-on: ubuntu-latest

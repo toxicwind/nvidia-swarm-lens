@@ -13,7 +13,7 @@ class AgentNode:
     name: str
     system_prompt: str
     tools: List[Dict[str, Any]] = field(default_factory=list)
-    model: str = "meta/llama-3.1-405b-instruct"
+    model: str = "openai/gpt-oss-20b"  # fail-fast verified 2026-09-14; old llama-3.1-405b default is dead
     temperature: float = 0.3
     max_tokens: int = 4096
     dependencies: Set[str] = field(default_factory=set)

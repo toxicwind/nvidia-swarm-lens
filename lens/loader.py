@@ -24,6 +24,15 @@ def discover_lenses(directory: str = ".") -> list:
                 lenses.append(cls())
     return lenses
 
+def load_lens_module(path: str):
+    """Load a single lens_*.py module by path; returns the module object."""
+    f = Path(path)
+    spec = importlib.util.spec_from_file_location(f.stem, f)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def apply_all(data: dict, directory: str = ".") -> dict:
     lenses = discover_lenses(directory)
     print(f"[{ts()}] Discovered {len(lenses)} lens profiles")

@@ -117,17 +117,46 @@ class GrammarConstrainedDecoder:
         rules.append(r'normal_text ::= [^\{]+ | "{" [^"\}] "}"')
         return "\n".join(rules)
 
+
+@dataclass
+class TagGrammarConstraint:
+    """<tool_call> tag grammar ported from the Drive maximal monolith.
+
+    Some models emit tool calls more reliably as explicit XML-ish tags than as
+    JSON blobs. Use grammar_mode="tag" on NvidiaAgent to parse::
+
+        <tool_call>{"tool": "search", "arguments": {"q": "..."}}</tool_call>
+    """
+    pattern: str = r"<tool_call>(.*?)</tool_call>"
+
+    def extract(self, raw: str) -> Optional[Dict[str, Any]]:
+        m = re.search(self.pattern, raw, re.DOTALL)
+        if not m:
+            return None
+        try:
+            obj = json.loads(m.group(1))
+        except json.JSONDecodeError:
+            return None
+        if isinstance(obj, dict) and "tool" in obj:
+            return {"tool": obj["tool"], "arguments": obj.get("arguments", {})}
+        return None
+
+    def wrap(self, tool: str, arguments: Dict[str, Any]) -> str:
+        return f"<tool_call>{json.dumps({'tool': tool, 'arguments': arguments})}</tool_call>"
+
+
 @dataclass
 class NvidiaAgent:
     name: str
     system_prompt: str
-    model: str = "meta/llama-3.1-405b-instruct"
+    model: str = "openai/gpt-oss-20b"  # verified alive-fast 2026-09-14 (old llama-3.1-405b default is dead)
     temperature: float = 0.3
     max_tokens: int = 4096
     tools: List[Dict[str, Any]] = field(default_factory=list)
     handoff_description: Optional[str] = None
     handoff_targets: List[str] = field(default_factory=list)
     enable_grammar: bool = True
+    grammar_mode: str = "json"  # "json" (OpenAI tool_calls-ish) or "tag" (<tool_call> tags, Drive merge)
     _prompt_engine: Optional[Llama31PromptEngine] = field(default=None, repr=False)
     _grammar_decoder: Optional[GrammarConstrainedDecoder] = field(default=None, repr=False)
 
@@ -139,8 +168,12 @@ class NvidiaAgent:
         return self._prompt_engine.render_with_tools(messages, self.tools) if self.tools else self._prompt_engine.render(messages)
 
     def parse_response(self, raw_output: str) -> Dict[str, Any]:
-        if self._grammar_decoder and self.tools:
-            tool_call = self._grammar_decoder.decode(raw_output)
+        if self.tools:
+            tool_call = None
+            if self.grammar_mode == "tag":
+                tool_call = TagGrammarConstraint().extract(raw_output)
+            elif self._grammar_decoder:
+                tool_call = self._grammar_decoder.decode(raw_output)
             if tool_call:
                 return {"role": "assistant", "content": None, "tool_calls": [{"id": f"call_{hash(tool_call['tool']) & 0xFFFFFFFF:08x}", "type": "function", "function": {"name": tool_call["tool"], "arguments": json.dumps(tool_call["arguments"])}}]}
         return {"role": "assistant", "content": raw_output}

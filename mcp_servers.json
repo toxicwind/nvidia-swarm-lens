@@ -83,10 +83,11 @@
         "embeddings"
       ],
       "models": [
-        "meta/llama-3.1-405b-instruct",
-        "meta/llama-3.1-70b-instruct"
+        "openai/gpt-oss-20b",
+        "z-ai/glm-5.3-flash",
+        "meta/llama-3.2-11b-vision-instruct"
       ],
-      "status": "LIVE (key valid)"
+      "status": "LIVE 2026-09-14 (fail-fast audit; old llama-3.1 defaults were 404-gated/delisted)"
     },
     {
       "name": "mintlify_gdrive",

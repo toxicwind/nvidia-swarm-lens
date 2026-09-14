@@ -24,7 +24,7 @@ except ImportError:
 class PersistentConnectionPool:
     base_url: str = "https://integrate.api.nvidia.com"
     api_key: str = field(default_factory=lambda: os.getenv("NVIDIA_API_KEY", ""))
-    max_connections: int = 50
+    max_connections: int = 8  # fail-fast: bounded concurrency, no 50-wide storms
     _session: Optional[Any] = field(default=None, repr=False)
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
@@ -34,7 +34,7 @@ class PersistentConnectionPool:
                 import aiohttp
                 self._connector = aiohttp.TCPConnector(limit=self.max_connections, limit_per_host=self.max_connections,
                     enable_cleanup_closed=True, force_close=False, ttl_dns_cache=300, use_dns_cache=True)
-                self._session = aiohttp.ClientSession(connector=self._connector, timeout=aiohttp.ClientTimeout(total=120, connect=30),
+                self._session = aiohttp.ClientSession(connector=self._connector, timeout=aiohttp.ClientTimeout(total=5, connect=3),  # fail-fast: >3-5s is useless
                     headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json", "Accept": "application/json", "Accept-Encoding": "gzip, deflate"})
             return self._session
 
@@ -64,7 +64,7 @@ class PersistentConnectionPool:
 @dataclass
 class TritonTransport:
     triton_url: str = "localhost:8001"
-    model_name: str = "llama-3.1-405b"
+    model_name: str = "openai/gpt-oss-20b"  # old default was a dead legacy id
     model_version: str = "1"
     _stub: Optional[Any] = field(default=None, repr=False)
     _channel: Optional[Any] = field(default=None, repr=False)
@@ -103,7 +103,7 @@ class TritonTransport:
 class NvidiaNIMClient:
     api_key: str = field(default_factory=lambda: os.getenv("NVIDIA_API_KEY", ""))
     base_url: str = "https://integrate.api.nvidia.com"
-    model: str = "meta/llama-3.1-405b-instruct"
+    model: str = "openai/gpt-oss-20b"  # alive-fast 2026-09-14; old default delisted
     enable_streaming: bool = True
     enable_triton: bool = False
     triton_url: str = "localhost:8001"

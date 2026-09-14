@@ -21,7 +21,7 @@ class LensProfile:
 
     name: str
     agent_type: str  # "researcher", "coder", "analyst", "orchestrator", etc.
-    model: str = "meta/llama-3.1-405b-instruct"
+    model: str = "openai/gpt-oss-20b"
     temperature: float = 0.3
     max_tokens: int = 4096
     system_prompt: str = ""
@@ -47,7 +47,7 @@ class LensProfile:
 RESEARCHER_LENS = LensProfile(
     name="nvidia_researcher",
     agent_type="researcher",
-    model="meta/llama-3.1-405b-instruct",
+    model="openai/gpt-oss-20b",
     temperature=0.2,
     max_tokens=8192,
     max_concurrent=8,
@@ -87,7 +87,7 @@ When using tools, respond with JSON: {"tool": "TOOL_NAME", "params": {"query": "
 CODER_LENS = LensProfile(
     name="nvidia_coder",
     agent_type="coder",
-    model="meta/llama-3.1-405b-instruct",
+    model="openai/gpt-oss-20b",
     temperature=0.1,
     max_tokens=16384,
     max_concurrent=4,
@@ -159,7 +159,7 @@ When using tools, respond with JSON: {"tool": "TOOL_NAME", "params": {"data_sour
 ORCHESTRATOR_LENS = LensProfile(
     name="nvidia_orchestrator",
     agent_type="orchestrator",
-    model="meta/llama-3.1-405b-instruct",
+    model="openai/gpt-oss-20b",
     temperature=0.4,
     max_tokens=4096,
     max_concurrent=2,
