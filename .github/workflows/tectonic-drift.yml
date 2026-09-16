@@ -17,10 +17,10 @@ jobs:
           bun-version: latest
       - name: Install JS dependencies (if a manifest exists)
         run: |
-          if [ -f package.json ] || [ -f bun.lockb ]; then
+          if [ -f package.json ]; then
             bun install --no-save || npm install
           else
-            echo no package.json slash bun.lockb - stdlib-only, skipping install
+            echo no package.json - stdlib-only, skipping install
           fi
       - name: Analyze drift
         run: |
