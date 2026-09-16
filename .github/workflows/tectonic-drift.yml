@@ -15,12 +15,18 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      - run: bun install --no-save || npm install
+      - name: Install JS dependencies (if a manifest exists)
+        run: |
+          if [ -f package.json ] || [ -f bun.lockb ]; then
+            bun install --no-save || npm install
+          else
+            echo no package.json slash bun.lockb - stdlib-only, skipping install
+          fi
       - name: Analyze drift
         run: |
-          node -e "
+          cat > drift-analyze.cjs <<'EOF'
           const { LensOrchestrator } = require('./lib/lens-orchestrator');
-          const orch = new LensOrchestrator({ lensDir: './src/_11ty/lenses' });
+          const orch = new LensOrchestrator({ lensDir: require('path').resolve('./src/_11ty/lenses') });
           orch.discover().then(() => {
             return orch.analyze('tectonic', {}, { lastPush: new Date().toISOString(), repo: 'effusion-labs', ciMode: true });
           }).then(r => {
@@ -32,5 +38,7 @@ jobs:
               console.error('WARNING: Health score ' + r.healthScore + ' below threshold ' + threshold);
               process.exit(1);
             }
-          });
-          
+          }).catch(e => { console.error(e); process.exit(1); });
+          EOF
+          node drift-analyze.cjs
+          rm -f drift-analyze.cjs
