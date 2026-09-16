@@ -24,9 +24,9 @@ jobs:
           fi
       - name: Analyze drift
         run: |
-          node -e "
+          cat > drift-analyze.cjs <<'EOF'
           const { LensOrchestrator } = require('./lib/lens-orchestrator');
-          const orch = new LensOrchestrator({ lensDir: './src/_11ty/lenses' });
+          const orch = new LensOrchestrator({ lensDir: require('path').resolve('./src/_11ty/lenses') });
           orch.discover().then(() => {
             return orch.analyze('tectonic', {}, { lastPush: new Date().toISOString(), repo: 'effusion-labs', ciMode: true });
           }).then(r => {
@@ -38,5 +38,7 @@ jobs:
               console.error('WARNING: Health score ' + r.healthScore + ' below threshold ' + threshold);
               process.exit(1);
             }
-          });
-          
+          }).catch(e => { console.error(e); process.exit(1); });
+          EOF
+          node drift-analyze.cjs
+          rm -f drift-analyze.cjs
